@@ -5,12 +5,20 @@
 # tests: build the tests (if any)
 # test   build and run the tests (if any)
 #
+# Variables:
+#
+#   DEBUG=1      Enable -ggdb3 and disable optimizations.
+#   SANITIZE=x   Enable -fsanitize=x for the compiler and linker.
+#
 # If you have a directory named "test/", this assumes all the sources inside are
 # tests using Boost UT.  Use $(TEST_OMIT_OBJS) to specify which file has your
 # main() so you can filter it out of the tests.
 #
 # If you need additional (system) libraries linked in, set $(LIBS) to the bare
 # library names in your Makefile.
+#
+# Yes, this does in-source-tree builds, but it was supposed to be very simple.
+# And one day long ago, it was.
 
 __THIS_DIR := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))
 
@@ -35,12 +43,16 @@ export SHELL := /bin/bash
 #------------------------------------------------------------------------------
 # Compiler setup.
 
-CC := clang-11
-CXX := clang++-11
-LD := clang++-11
-AR := llvm-ar-11
-NM := llvm-nm-11
-RANLIB := llvm-ranlib-11
+# What version of clang do we use?
+CLANG_VERSION := 11
+
+# The tools we need.
+CC := clang-$(CLANG_VERSION)
+CXX := clang++-$(CLANG_VERSION)
+LD := clang++-$(CLANG_VERSION)
+AR := llvm-ar-$(CLANG_VERSION)
+NM := llvm-nm-$(CLANG_VERSION)
+RANLIB := llvm-ranlib-$(CLANG_VERSION)
 
 # Debug flag
 DEBUG_FLAGS := -ggdb3
@@ -155,7 +167,7 @@ prog: $(MAKEFILE_DEPS) $(OBJS)
 test/%.o: CXXFLAGS := $(CXXFLAGS) $(TEST_CXXFLAGS)
 
 # The test_main.o lives in a special place.
-test/test_main.o: $(__THIS_DIR)/test_main.cc $(MAKEFILE_DEPS)
+test/test_main.o: $(__THIS_DIR)/../test-main/test_main.cc $(MAKEFILE_DEPS)
 	$(call emit,$(CXX),$@)
 	$(hide) $(CXX) $(CXXFLAGS) -o $@ -c $<
 
