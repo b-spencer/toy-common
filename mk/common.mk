@@ -50,6 +50,7 @@ CLANG_VERSION := 11
 CC := clang-$(CLANG_VERSION)
 CXX := clang++-$(CLANG_VERSION)
 LD := clang++-$(CLANG_VERSION)
+# The benchmark rule needs these :(
 AR := llvm-ar-$(CLANG_VERSION)
 NM := llvm-nm-$(CLANG_VERSION)
 RANLIB := llvm-ranlib-$(CLANG_VERSION)
@@ -60,11 +61,13 @@ DEBUG_FLAGS := -ggdb3
 # Debug or release?
 C_CXX_FLAGS := -Wall -Wextra -Werror $(DEBUG_FLAGS)
 ifeq ($(DEBUG),)
-  C_CXX_FLAGS += -O3 -ffast-math -march=native -mtune=native -DNDEBUG -flto
+  C_CXX_FLAGS += -O3 -ffast-math -march=native -mtune=native -DNDEBUG
 endif
 
+# Flags common to both compilers and the linker.
+C_CXX_LD_FLAGS := -flto
+
 # Sanitize?
-C_CXX_LD_FLAGS :=
 ifneq ($(SANITIZE),)
   C_CXX_LD_FLAGS += -fsanitize=$(SANITIZE)
 endif
@@ -76,7 +79,7 @@ STD_LIB_FLAGS := -stdlib=libc++
 # Apply flags to each tool.
 CFLAGS := $(C_CXX_FLAGS) $(C_CXX_LD_FLAGS)
 CXXFLAGS := $(C_CXX_FLAGS) $(C_CXX_LD_FLAGS) $(STD_VER_FLAGS) $(STD_LIB_FLAGS)
-LDFLAGS := $(DEBUG_FLAGS) $(C_CXX_LD_FLAGS) -fuse-ld=lld -flto $(STD_VER_FLAGS) $(STD_LIB_FLAGS)
+LDFLAGS := $(DEBUG_FLAGS) $(C_CXX_LD_FLAGS) -fuse-ld=lld $(STD_VER_FLAGS) $(STD_LIB_FLAGS)
 
 # Add libraries.
 LDFLAGS += $(addprefix -l,$(LIBS))
