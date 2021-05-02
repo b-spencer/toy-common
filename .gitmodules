@@ -1,0 +1,6 @@
+[submodule "benchmark"]
+	path = benchmark
+	url = https://github.com/google/benchmark.git
+[submodule "ut"]
+	path = ut
+	url = https://github.com/boost-ext/ut.git
