@@ -94,8 +94,16 @@ MAKEFILE_DEPS := $(if $(NMD),,$(MAKEFILE_LIST))
 # Find _all_ objects that we might want to compile.
 OBJS := $(patsubst src/%,obj/%,$(patsubst %.cc,%.o,$(shell find src/ -name '*.cc')))
 
+# The special test_main.o object's source lives outside of src/, so add it to
+# $(OBJS) manually.
+TEST_OBJS_MAIN := obj/test/test_main.o
+OBJS += $(TEST_OBJS_MAIN)
+
 # What are the dependencies of all those objects?
 DEPS := $(patsubst %,%.d,$(OBJS))
+
+# Which of those $(OBJS) are normal program objects?
+PROG_OBJS := $(foreach obj,$(OBJS),$(if $(findstring /test/,$(obj)),,$(obj)))
 
 #------------------------------------------------------------------------------
 # Test Setup
@@ -103,15 +111,11 @@ DEPS := $(patsubst %,%.d,$(OBJS))
 # Include the ut library.
 TEST_CXXFLAGS := -Icommon/ut/include/
 
-# Which of those $(OBJS) are test objects?
+# Which of those $(OBJS) are exclusively test objects?
 TEST_OBJS := $(foreach obj,$(OBJS),$(if $(findstring /test/,$(obj)),$(obj)))
 
-# Add the special test_main.o object to $(TEST_OBJS).
-TEST_OBJS_MAIN := obj/test/test_main.o
-TEST_OBJS += $(TEST_OBJS_MAIN)
-
-# Define which $(OBJS) to omit from tests.
-TEST_OMIT_OBJS := main.o
+# Define which $(PROG_OBJS) to omit when we link bin/tests.
+TEST_OMIT_PROG_OBJS := obj/main.o
 
 #------------------------------------------------------------------------------
 # Google Benchmark
@@ -153,7 +157,7 @@ $(BENCHMARK_LIB): $(MAKEFILE_DEPS)
 	  >/dev/null
 
 #------------------------------------------------------------------------------
-# Simple rules for simple programs.  Well, it used to be simple.
+# Object rules.
 
 # How to make dependencies at the same time as compilation.
 DEPFLAGS = -MT $@ -MMD -MP -MF $@.d
@@ -174,20 +178,28 @@ obj/%.o: src/%.cc $(MAKEFILE_DEPS)
 	$(hide) $(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ -c $<
 	$(hide) touch $@.d
 
-bin/prog: $(MAKEFILE_DEPS) $(filter-out $(TEST_OBJS),$(OBJS)) | bin
-	$(call emit,link,$@)
-	$(hide) $(LD) -o $@ $(filter %.o %.a,$^) $(LDFLAGS)
-
 # Test objects need to be compiled with extra flags.
 $(TEST_OBJS): CXXFLAGS := $(CXXFLAGS) $(TEST_CXXFLAGS)
 
 # The test_main.o lives in a special place.
 $(TEST_OBJS_MAIN): common/test-main/test_main.cc $(MAKEFILE_DEPS)
+	$(call emit,$(CXX),$<)
+	$(hide) rm -f $@.d
+	$(hide) $(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ -c $<
+	$(hide) touch $@.d
 
-# How to built the test binary.
-bin/tests: $(TEST_OBJS) $(MAKEFILE_DEPS) | bin
+#------------------------------------------------------------------------------
+# Binary rules.
+
+bin/%: $(MAKEFILE_DEPS) | bin
 	$(call emit,link,$@)
 	$(hide) $(LD) -o $@ $(filter %.o %.a,$^) $(LDFLAGS)
+
+# The normal program depends on the non-test $(OBJS).
+bin/prog: $(PROG_OBJS)
+
+# How to built the test binary.
+bin/tests: $(filter-out $(TEST_OMIT_PROG_OBJS),$(PROG_OBJS)) $(TEST_OBJS)
 
 # Benchmarks need some extras.
 # TODO: bench/%.o: CXXFLAGS := $(CXXFLAGS) $(BENCHMARK_CXXFLAGS)
@@ -196,17 +208,20 @@ bin/tests: $(TEST_OBJS) $(MAKEFILE_DEPS) | bin
 bin/bench: \
   $(MAKEFILE_DEPS) \
   $(BENCHMARK_LIB) \
-  $(filter-out $(TEST_OMIT_OBJS),$(OBJS)) \
+  $(PROG_OBJS) \
   $(patsubst %.cc,%.o,$(wildcard bench/*.cc))
 	$(call emit,link,$@)
 	$(hide) $(LD) -o $@ $(filter %.o %.a,$^) $(LDFLAGS)
+
+#------------------------------------------------------------------------------
+# Special targets.
 
 # Build everything.
 .PHONY: all
 all: \
   bin/prog \
-  $(if $(wildcard test/),bin/tests) \
-  $(if $(wildcard bench/),bin/bench)
+  $(if $(wildcard src/test/),bin/tests) \
+  $(if $(wildcard src/bench/),bin/bench)
 
 # Run the tests.
 .PHONY: test
