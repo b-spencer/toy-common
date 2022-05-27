@@ -164,29 +164,36 @@ DEPFLAGS = -MT $@ -MMD -MP -MF $@.d
 
 # Rules to make the parent directory of each $(OBJS) (and bin/).
 $(foreach obj,$(OBJS),$(eval $(obj): | $(dir $(obj))))
-$(foreach parent,bin $(sort $(dir $(OBJS))),$(eval $(parent):; mkdir -p $$@))
+$(foreach parent,bin $(sort $(dir $(OBJS))),$(eval $(parent):; $(hide) mkdir -p $$@))
 
-obj/%.o: src/%.c $(MAKEFILE_DEPS)
+# How to build C++ objects.
+obj/%.o: src/%.cc
+	$(call emit,$(CXX),$<)
+	$(hide) rm -f $@.d
+	$(hide) $(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ -c $<
+	$(hide) touch $@.d
+
+# How to build C objects.
+obj/%.o: src/%.c
 	$(call emit,$(CC),$<)
 	$(hide) rm -f $@.d
 	$(hide) $(CC) $(CFLAGS) $(DEPFLAGS) -o $@ -c $<
 	$(hide) touch $@.d
 
-obj/%.o: src/%.cc $(MAKEFILE_DEPS)
-	$(call emit,$(CXX),$<)
-	$(hide) rm -f $@.d
-	$(hide) $(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ -c $<
-	$(hide) touch $@.d
-
 # Test objects need to be compiled with extra flags.
 $(TEST_OBJS): CXXFLAGS := $(CXXFLAGS) $(TEST_CXXFLAGS)
 
-# The test_main.o lives in a special place.
-$(TEST_OBJS_MAIN): common/test-main/test_main.cc $(MAKEFILE_DEPS)
+# The test_main.o lives in a special place.  We need to repeat the rule because
+# we're effectively defining a separate source-to-object directory mapping.
+$(TEST_OBJS_MAIN): common/test-main/test_main.cc
 	$(call emit,$(CXX),$<)
 	$(hide) rm -f $@.d
 	$(hide) $(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ -c $<
 	$(hide) touch $@.d
+
+# Make all $(OBJS) depend on $(MAKEFILE_DEPS), too, but never as their first
+# dependency.
+$(OBJS): $(MAKEFILE_DEPS)
 
 #------------------------------------------------------------------------------
 # Binary rules.
