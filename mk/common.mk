@@ -219,6 +219,12 @@ $(OBJS): $(MAKEFILE_DEPS)
 #------------------------------------------------------------------------------
 # Binary rules.
 
+# How to build the symlink alias for bin/prog.  We touch it every time so it
+# acts like a derivative.
+prog: bin/prog
+	$(hide) ln -sf $< $@
+	$(hide) touch --no-dereference $@
+
 # How to build binaries in general.
 bin/prog bin/tests bin/bench: bin/%: $(MAKEFILE_DEPS) | bin
 	$(call emit,link,$@)
