@@ -137,11 +137,13 @@ BENCH_OBJS := $(call filter-in-substring,/bench/,$(OBJS))
 
 # Where things are.
 BENCHMARK_DIR := common/benchmark
-BENCHMARK_INCLUDE := $(BENCHMARK_DIR)/include
+BENCHMARK_INCLUDE := $(addprefix $(BENCHMARK_DIR)/, \
+  include \
+  build/include)
 BENCHMARK_LIB := $(BENCHMARK_DIR)/build/src/libbenchmark.a
 
 # Include the benchmark library.
-BENCHMARK_CXXFLAGS := -I$(BENCHMARK_INCLUDE)
+BENCHMARK_CXXFLAGS := $(addprefix -I,$(BENCHMARK_INCLUDE))
 
 # As per the online instructions.
 $(BENCHMARK_LIB): $(MAKEFILE_DEPS)
@@ -205,6 +207,10 @@ $(TEST_OBJS_MAIN): common/test-main/test_main.cc
 
 # Benchmark objects need to be compiled with extra flags.
 $(BENCH_OBJS): CXXFLAGS := $(CXXFLAGS) $(BENCHMARK_CXXFLAGS)
+
+# Benchmark objects can't be built until the benchmark library is because it
+# generates some of its headers.
+$(BENCH_OBJS): $(BENCHMARK_LIB)
 
 # Make all $(OBJS) depend on $(MAKEFILE_DEPS), too, but never as their first
 # dependency.
