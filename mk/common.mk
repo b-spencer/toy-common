@@ -91,16 +91,22 @@ emit = $(info [$1] $2)
 # Should things depend on the makefiles themselves?
 MAKEFILE_DEPS := $(if $(NMD),,$(MAKEFILE_LIST))
 
-# If they didn't set $(OBJS) explicitly, assume all .cc files make .o.
-ifeq ($(OBJS),)
-  OBJS := $(patsubst %.cc,%.o,$(wildcard *.cc))
-endif
+# Find _all_ objects that we might want to compile.
+OBJS := $(patsubst src/%,obj/%,$(patsubst %.cc,%.o,$(shell find src/ -name '*.cc')))
+
+# What are the dependencies of all those objects?
+DEPS := $(patsubst %,%.d,$(OBJS))
 
 #------------------------------------------------------------------------------
 # Test Setup
 
 # Include the ut library.
-TEST_CXXFLAGS := -I../common/ut/include/
+TEST_CXXFLAGS := -Icommon/ut/include/
+
+# Which of those $(OBJS) are test objects?
+TEST_OBJS := $(foreach obj,$(OBJS),$(if $(findstring /test/,$(obj)),$(obj)))
+$(info TEST_OBJS=$(TEST_OBJS))
+
 
 # Define which $(OBJS) to omit from tests.  Default to main.o.
 TEST_OMIT_OBJS := main.o
@@ -109,7 +115,7 @@ TEST_OMIT_OBJS := main.o
 # Google Benchmark
 
 # Where things are.
-BENCHMARK_DIR := ../common/benchmark
+BENCHMARK_DIR := common/benchmark
 BENCHMARK_INCLUDE := $(BENCHMARK_DIR)/include
 BENCHMARK_LIB := $(BENCHMARK_DIR)/build/src/libbenchmark.a
 
@@ -150,36 +156,41 @@ $(BENCHMARK_LIB): $(MAKEFILE_DEPS)
 # How to make dependencies at the same time as compilation.
 DEPFLAGS = -MT $@ -MMD -MP -MF $@.d
 
-%.o: %.c $(MAKEFILE_DEPS)
+# Rules to make the parent directory of each $(OBJS).
+$(foreach obj,$(OBJS),$(eval $(obj): |$(dir $(obj))))
+$(foreach parent,$(sort $(dir $(OBJS))),$(eval $(parent):; mkdir -p $$@))
+
+obj/%.o: src/%.c $(MAKEFILE_DEPS)
 	$(call emit,$(CC),$<)
 	$(hide) rm -f $@.d
 	$(hide) $(CC) $(CFLAGS) $(DEPFLAGS) -o $@ -c $<
 	$(hide) touch $@.d
 
-%.o: %.cc $(MAKEFILE_DEPS)
+obj/%.o: src/%.cc $(MAKEFILE_DEPS)
 	$(call emit,$(CXX),$<)
 	$(hide) rm -f $@.d
 	$(hide) $(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ -c $<
 	$(hide) touch $@.d
 
-prog: $(MAKEFILE_DEPS) $(OBJS)
+bin/prog: $(MAKEFILE_DEPS) $(OBJS)
 	$(call emit,link,$@)
+	$(hide) mkdir -p bin
 	$(hide) $(LD) -o $@ $(filter %.o %.a,$^) $(LDFLAGS)
 
-# Tests need some extras.
-test/%.o: CXXFLAGS := $(CXXFLAGS) $(TEST_CXXFLAGS)
+# Test objects need to be compiled with extra flags.
+$(TEST_OBJS): CXXFLAGS := $(CXXFLAGS) $(TEST_CXXFLAGS)
 
 # The test_main.o lives in a special place.
-test/test_main.o: $(__THIS_DIR)/../test-main/test_main.cc $(MAKEFILE_DEPS)
+obj/test/test_main.o: common/test-main/test_main.cc $(MAKEFILE_DEPS)
 	$(call emit,$(CXX),$@)
 	$(hide) $(CXX) $(CXXFLAGS) -o $@ -c $<
 
 # How to built the test binary.
-test/tests: \
+bin/tests: \
   $(MAKEFILE_DEPS) \
   $(filter-out $(TEST_OMIT_OBJS),$(OBJS)) \
-  test/test_main.o \
-  $(patsubst %.cc,%.o,$(wildcard test/*.cc))
+  obj/test/test_main.o \
+  $(patsubst %.cc,%.o,$(wildcard src/test/*.cc))
 	$(call emit,link,$@)
 	$(hide) $(LD) -o $@ $(filter %.o %.a,$^) $(LDFLAGS)
 
@@ -187,7 +198,7 @@ test/tests: \
 bench/%.o: CXXFLAGS := $(CXXFLAGS) $(BENCHMARK_CXXFLAGS)
 
 # How to built the benchmark binary.
-bench/bench: \
+bin/bench: \
   $(MAKEFILE_DEPS) \
   $(BENCHMARK_LIB) \
   $(filter-out $(TEST_OMIT_OBJS),$(OBJS)) \
@@ -198,27 +209,27 @@ bench/bench: \
 # Build everything.
 .PHONY: all
 all: \
-  prog \
-  $(if $(wildcard test/),test/tests) \
-  $(if $(wildcard bench/),bench/bench)
+  bin/prog \
+  $(if $(wildcard test/),bin/tests) \
+  $(if $(wildcard bench/),bin/bench)
 
 # Run the tests.
 .PHONY: test
-test: test/tests
+test: bin/tests
 	$(call emit,$@,$<)
-	$(hide) ./test/tests
+	$(hide) ./bin/tests
 
 # Run the benchmarks.
 .PHONY: bench
-bench: bench/bench
+bench: bin/bench
 	$(call emit,$@,$<)
-	$(hide) ./bench/bench
+	$(hide) ./bin/bench
 
 # Clean everything.
 .PHONY: clean
 clean:
 	$(call emit,$@)
-	-$(hide) rm -f *.o *.d prog test/{tests,*.o,*.d} bench/{bench,*.o,*.d}
+	-$(hide) rm -rf bin/ obj/ 
 
 .PHONY: pristine
 pristine: clean
@@ -226,6 +237,6 @@ pristine: clean
 	-$(hide) rm -rf $(BENCHMARK_DIR)/build
 
 # Include dependencies.
-include $(wildcard *.d test/*.d bench/*.d)
+include $(wildcard $(DEPS))
 
 #******************************************************************************
