@@ -105,10 +105,12 @@ TEST_CXXFLAGS := -Icommon/ut/include/
 
 # Which of those $(OBJS) are test objects?
 TEST_OBJS := $(foreach obj,$(OBJS),$(if $(findstring /test/,$(obj)),$(obj)))
-$(info TEST_OBJS=$(TEST_OBJS))
 
+# Add the special test_main.o object to $(TEST_OBJS).
+TEST_OBJS_MAIN := obj/test/test_main.o
+TEST_OBJS += $(TEST_OBJS_MAIN)
 
-# Define which $(OBJS) to omit from tests.  Default to main.o.
+# Define which $(OBJS) to omit from tests.
 TEST_OMIT_OBJS := main.o
 
 #------------------------------------------------------------------------------
@@ -156,9 +158,9 @@ $(BENCHMARK_LIB): $(MAKEFILE_DEPS)
 # How to make dependencies at the same time as compilation.
 DEPFLAGS = -MT $@ -MMD -MP -MF $@.d
 
-# Rules to make the parent directory of each $(OBJS).
-$(foreach obj,$(OBJS),$(eval $(obj): |$(dir $(obj))))
-$(foreach parent,$(sort $(dir $(OBJS))),$(eval $(parent):; mkdir -p $$@))
+# Rules to make the parent directory of each $(OBJS) (and bin/).
+$(foreach obj,$(OBJS),$(eval $(obj): | $(dir $(obj))))
+$(foreach parent,bin $(sort $(dir $(OBJS))),$(eval $(parent):; mkdir -p $$@))
 
 obj/%.o: src/%.c $(MAKEFILE_DEPS)
 	$(call emit,$(CC),$<)
@@ -172,30 +174,23 @@ obj/%.o: src/%.cc $(MAKEFILE_DEPS)
 	$(hide) $(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ -c $<
 	$(hide) touch $@.d
 
-bin/prog: $(MAKEFILE_DEPS) $(OBJS)
+bin/prog: $(MAKEFILE_DEPS) $(filter-out $(TEST_OBJS),$(OBJS)) | bin
 	$(call emit,link,$@)
-	$(hide) mkdir -p bin
 	$(hide) $(LD) -o $@ $(filter %.o %.a,$^) $(LDFLAGS)
 
 # Test objects need to be compiled with extra flags.
 $(TEST_OBJS): CXXFLAGS := $(CXXFLAGS) $(TEST_CXXFLAGS)
 
 # The test_main.o lives in a special place.
-obj/test/test_main.o: common/test-main/test_main.cc $(MAKEFILE_DEPS)
-	$(call emit,$(CXX),$@)
-	$(hide) $(CXX) $(CXXFLAGS) -o $@ -c $<
+$(TEST_OBJS_MAIN): common/test-main/test_main.cc $(MAKEFILE_DEPS)
 
 # How to built the test binary.
-bin/tests: \
-  $(MAKEFILE_DEPS) \
-  $(filter-out $(TEST_OMIT_OBJS),$(OBJS)) \
-  obj/test/test_main.o \
-  $(patsubst %.cc,%.o,$(wildcard src/test/*.cc))
+bin/tests: $(TEST_OBJS) $(MAKEFILE_DEPS) | bin
 	$(call emit,link,$@)
 	$(hide) $(LD) -o $@ $(filter %.o %.a,$^) $(LDFLAGS)
 
 # Benchmarks need some extras.
-bench/%.o: CXXFLAGS := $(CXXFLAGS) $(BENCHMARK_CXXFLAGS)
+# TODO: bench/%.o: CXXFLAGS := $(CXXFLAGS) $(BENCHMARK_CXXFLAGS)
 
 # How to built the benchmark binary.
 bin/bench: \
