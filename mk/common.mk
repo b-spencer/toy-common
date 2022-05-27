@@ -91,6 +91,17 @@ emit = $(info [$1] $2)
 # Should things depend on the makefiles themselves?
 MAKEFILE_DEPS := $(if $(NMD),,$(MAKEFILE_LIST))
 
+# A function that can filter in all $2 that contain $1.
+filter-in-substring = \
+  $(foreach value,$2,$(if $(findstring $1,$(value)),$(value)))
+
+# A function that can filter out all $2 that contain $1.
+filter-out-substring = \
+  $(foreach value,$2,$(if $(findstring $1,$(value)),,$(value)))
+
+#------------------------------------------------------------------------------
+# Program Setup
+
 # Find _all_ objects that we might want to compile.
 OBJS := $(patsubst src/%,obj/%,$(patsubst %.cc,%.o,$(shell find src/ -name '*.cc')))
 
@@ -103,7 +114,8 @@ OBJS += $(TEST_OBJS_MAIN)
 DEPS := $(patsubst %,%.d,$(OBJS))
 
 # Which of those $(OBJS) are normal program objects?
-PROG_OBJS := $(foreach obj,$(OBJS),$(if $(findstring /test/,$(obj)),,$(obj)))
+PROG_OBJS := $(call filter-out-substring,/test/,$(OBJS))
+PROG_OBJS := $(call filter-out-substring,/bench/,$(PROG_OBJS))
 
 #------------------------------------------------------------------------------
 # Test Setup
@@ -112,13 +124,16 @@ PROG_OBJS := $(foreach obj,$(OBJS),$(if $(findstring /test/,$(obj)),,$(obj)))
 TEST_CXXFLAGS := -Icommon/ut/include/
 
 # Which of those $(OBJS) are exclusively test objects?
-TEST_OBJS := $(foreach obj,$(OBJS),$(if $(findstring /test/,$(obj)),$(obj)))
+TEST_OBJS := $(call filter-in-substring,/test/,$(OBJS))
 
 # Define which $(PROG_OBJS) to omit when we link bin/tests.
 TEST_OMIT_PROG_OBJS := obj/main.o
 
 #------------------------------------------------------------------------------
-# Google Benchmark
+# Google Benchmark Setup
+
+# Which of those $(OBJS) are exclusively bench objects?
+BENCH_OBJS := $(call filter-in-substring,/bench/,$(OBJS))
 
 # Where things are.
 BENCHMARK_DIR := common/benchmark
@@ -127,9 +142,6 @@ BENCHMARK_LIB := $(BENCHMARK_DIR)/build/src/libbenchmark.a
 
 # Include the benchmark library.
 BENCHMARK_CXXFLAGS := -I$(BENCHMARK_INCLUDE)
-
-# We need pthread for this.
-bench/bench: LDFLAGS := $(LDFLAGS) -pthread
 
 # As per the online instructions.
 $(BENCHMARK_LIB): $(MAKEFILE_DEPS)
@@ -191,6 +203,9 @@ $(TEST_OBJS_MAIN): common/test-main/test_main.cc
 	$(hide) $(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ -c $<
 	$(hide) touch $@.d
 
+# Benchmark objects need to be compiled with extra flags.
+$(BENCH_OBJS): CXXFLAGS := $(CXXFLAGS) $(BENCHMARK_CXXFLAGS)
+
 # Make all $(OBJS) depend on $(MAKEFILE_DEPS), too, but never as their first
 # dependency.
 $(OBJS): $(MAKEFILE_DEPS)
@@ -198,27 +213,21 @@ $(OBJS): $(MAKEFILE_DEPS)
 #------------------------------------------------------------------------------
 # Binary rules.
 
-bin/%: $(MAKEFILE_DEPS) | bin
+# How to build binaries in general.
+bin/prog bin/tests bin/bench: bin/%: $(MAKEFILE_DEPS) | bin
 	$(call emit,link,$@)
 	$(hide) $(LD) -o $@ $(filter %.o %.a,$^) $(LDFLAGS)
 
 # The normal program depends on the non-test $(OBJS).
 bin/prog: $(PROG_OBJS)
 
-# How to built the test binary.
+# How to build the test binary.
 bin/tests: $(filter-out $(TEST_OMIT_PROG_OBJS),$(PROG_OBJS)) $(TEST_OBJS)
 
-# Benchmarks need some extras.
-# TODO: bench/%.o: CXXFLAGS := $(CXXFLAGS) $(BENCHMARK_CXXFLAGS)
-
-# How to built the benchmark binary.
-bin/bench: \
-  $(MAKEFILE_DEPS) \
-  $(BENCHMARK_LIB) \
-  $(PROG_OBJS) \
-  $(patsubst %.cc,%.o,$(wildcard bench/*.cc))
-	$(call emit,link,$@)
-	$(hide) $(LD) -o $@ $(filter %.o %.a,$^) $(LDFLAGS)
+# How to build the benchmark binary.
+bin/bench: $(filter-out $(TEST_OMIT_PROG_OBJS),$(PROG_OBJS)) $(BENCH_OBJS)
+bin/bench: $(BENCHMARK_LIB)
+bin/bench: LDFLAGS := $(LDFLAGS) -pthread
 
 #------------------------------------------------------------------------------
 # Special targets.
