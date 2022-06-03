@@ -102,8 +102,11 @@ filter-out-substring = \
 #------------------------------------------------------------------------------
 # Program Setup
 
-# Find _all_ objects that we might want to compile.
-OBJS := $(patsubst src/%,obj/%,$(patsubst %.cc,%.o,$(shell find src/ -name '*.cc')))
+# Find _all_ objects that we might want to compile.  This is basically all of
+# the '*.cc' files under the src/ directory, excluding '.*.cc' files.
+OBJS := $(patsubst src/%,obj/%,\
+  $(patsubst %.cc,%.o,\
+    $(shell find src/ -name '.*' -prune -o -name '*.cc' -print)))
 
 # The special test_main.o object's source lives outside of src/, so add it to
 # $(OBJS) manually.
@@ -187,7 +190,7 @@ obj/%.o: src/%.cc
 	$(hide) $(CXX) $(CXXFLAGS) $(DEPFLAGS) -o $@ -c $<
 	$(hide) touch $@.d
 
-# How to build C objects.
+# How to build C objects, for completeness.
 obj/%.o: src/%.c
 	$(call emit,$(CC),$<)
 	$(hide) rm -f $@.d
@@ -267,7 +270,7 @@ bench: bin/bench
 .PHONY: clean
 clean:
 	$(call emit,$@)
-	-$(hide) rm -rf bin/ obj/ 
+	-$(hide) rm -rf bin/ obj/ prog
 
 .PHONY: pristine
 pristine: clean
