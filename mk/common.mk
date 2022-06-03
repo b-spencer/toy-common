@@ -250,7 +250,7 @@ bin/bench: LDFLAGS := $(LDFLAGS) -pthread
 # Build everything.
 .PHONY: all
 all: \
-  bin/prog \
+  prog \
   $(if $(wildcard src/test/),bin/tests) \
   $(if $(wildcard src/bench/),bin/bench)
 
