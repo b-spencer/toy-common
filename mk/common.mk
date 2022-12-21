@@ -44,7 +44,7 @@ export SHELL := /bin/bash
 # Compiler setup.
 
 # What version of clang do we use?
-CLANG_VERSION := 14
+CLANG_VERSION := 15
 
 # The tools we need.
 CC := clang-$(CLANG_VERSION)
