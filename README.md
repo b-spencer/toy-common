@@ -15,9 +15,10 @@ Then put your code in another subdirectory.  (It just makes life easier that way
     cd project/
     git init .
     git submodule add https://github.com/b-spencer/toy-common.git common
+    echo "include common/mk/common.mk" >Makefile
+    (echo /bin/; echo /obj/; echo /prog) >.gitignore
     mkdir src/
     cd src/
-    echo "include ../common/mk/common.mk" > Makefile
     echo '#include <iostream>' > main.cc
     echo 'int main() { std::cout << "Hello, world!\n"; }' >> main.cc
     make
